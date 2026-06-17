@@ -42,4 +42,8 @@ func SetupRoutes(app *fiber.App) {
 
 	// === ROUTES HISTORI SENSOR (Grafik) ===
 	api.Get("/sensor/history", controllers.GetSensorHistory)
+
+	// === ROUTES USER PROFILE ===
+	api.Get("/profile", controllers.GetProfile)
+	api.Put("/profile", controllers.UpdateProfile)
 }
