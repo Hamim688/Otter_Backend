@@ -7,36 +7,32 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// GetProfile mengambil profil admin (ID 1) dari PostgreSQL
+// Ambil data profil administrator
 func GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	
-	// Cari user dengan ID 1. Jika belum ada, gunakan default seeder
+	// Cari user ID 1. Jika belum ada, cari user pertama di database
 	if err := config.DB.First(&user, 1).Error; err != nil {
-		// Fallback jika database seeder belum jalan
-		user = models.User{
-			ID:          1,
-			Username:    "admin",
-			Password:    "1234",
-			DisplayName: "Mimah Dudim",
-			Role:        "Administrator Rumah Pintar",
-			AvatarURL:   "",
+		if err := config.DB.First(&user).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Profil pengguna belum di-seed!"})
 		}
-		config.DB.Create(&user)
 	}
 
 	return c.JSON(user)
 }
 
-// UpdateProfile memperbarui profil admin di PostgreSQL
+// Update data profil administrator
 func UpdateProfile(c *fiber.Ctx) error {
 	var user models.User
 
+	// Ambil data user ID 1
 	if err := config.DB.First(&user, 1).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "User tidak ditemukan"})
+		if err := config.DB.First(&user).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Profil tidak ditemukan!"})
+		}
 	}
 
-	type ProfileBody struct {
+	type ProfileUpdateBody struct {
 		Username    string `json:"username"`
 		Password    string `json:"password"`
 		DisplayName string `json:"display_name"`
@@ -44,15 +40,24 @@ func UpdateProfile(c *fiber.Ctx) error {
 		AvatarURL   string `json:"avatar_url"`
 	}
 
-	var body ProfileBody
+	var body ProfileUpdateBody
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Format JSON salah!"})
 	}
 
-	user.Username = body.Username
-	user.Password = body.Password
-	user.DisplayName = body.DisplayName
-	user.Role = body.Role
+	if body.Username != "" {
+		user.Username = body.Username
+	}
+	if body.Password != "" {
+		user.Password = body.Password
+	}
+	if body.DisplayName != "" {
+		user.DisplayName = body.DisplayName
+	}
+	if body.Role != "" {
+		user.Role = body.Role
+	}
+	// Always set avatar URL if provided (or can be empty string)
 	user.AvatarURL = body.AvatarURL
 
 	config.DB.Save(&user)
