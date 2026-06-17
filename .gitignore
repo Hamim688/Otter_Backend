@@ -1,0 +1,48 @@
+# ========================
+# 1. RAHASIA NEGARA (PENTING!)
+# ========================
+.env
+Backend/.env
+
+# ========================
+# 2. GOLANG BAGGAGE
+# ========================
+Backend/Backend
+Backend/*.exe
+Backend/*.exe~
+Backend/*.dll
+Backend/*.so
+Backend/*.dylib
+Backend/bin/
+go.work
+go.work.sum
+
+# ========================
+# 3. PYTHON BAGGAGE (Machine Learning Lu)
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+*.pkl
+
+# ========================
+# 4. FLUTTER / MOBILE BAGGAGE
+# ========================
+Mobile/.dart_tool/
+Mobile/.flutter-plugins
+Mobile/.flutter-plugins-dependencies
+Mobile/.pub-cache/
+Mobile/.pub/
+Mobile/build/
+Mobile/ios/Pods/
+Mobile/android/.gradle/
+
+# ========================
+# 5. OS & EDITOR CONFIG
+# ========================
+.vscode/
+.idea/
+.DS_Store
