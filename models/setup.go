@@ -13,6 +13,7 @@ func MigrateDB(db *gorm.DB) {
 		&Notification{},
 		&Perangkat{},
 		&Otomatisasi{},
+		&SensorLog{},
 	)
 	
 	if err != nil {
