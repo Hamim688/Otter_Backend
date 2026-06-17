@@ -26,20 +26,4 @@ func Seed(db *gorm.DB) {
 		}
 	}
 
-	// === 2. SEED DATA DUMMY RFID ===
-	var rfidCount int64
-	db.Model(&RfidCard{}).Count(&rfidCount)
-	if rfidCount == 0 {
-		dummyCards := []RfidCard{
-			{UID: "A1B2C3D4", NamaPemilik: "Hamim", Status: "aktif"},
-			{UID: "90E1F2A3", NamaPemilik: "Rafa Enrico", Status: "aktif"},
-			{UID: "E2F3A4B5", NamaPemilik: "Tamu Asing", Status: "menunggu"},
-		}
-		for _, card := range dummyCards {
-			if err := db.Create(&card).Error; err != nil {
-				log.Printf("[DATABASE SEED ERROR] Gagal mempopulasi kartu %s: %v\n", card.UID, err)
-			}
-		}
-		log.Println("[DATABASE SEED] Berhasil mempopulasikan kartu RFID dummy.")
-	}
 }
