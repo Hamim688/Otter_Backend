@@ -1,7 +1,7 @@
 package models
 
 type Otomatisasi struct {
-	ID                   uint    `gorm:"primaryKey;default:1"` // Selalu ID 1
+	ID                   uint    `gorm:"primaryKey` // Selalu ID 1
 	ModeAutoLampu        bool    `gorm:"default:true"`
 	AutoLampuKamar       bool    `gorm:"default:true"`
 	AutoLampuTamu        bool    `gorm:"default:true"`

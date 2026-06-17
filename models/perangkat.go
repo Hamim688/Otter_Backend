@@ -1,7 +1,7 @@
 package models
 
 type Perangkat struct {
-	ID              uint `gorm:"primaryKey;default:1"` // Selalu ID 1
+	ID              uint `gorm:"primaryKey"` // Hapus tulisan default:1 di sini
 	LampuKamar      bool `gorm:"default:false"`
 	LampuTamu       bool `gorm:"default:false"`
 	LampuKamarMandi bool `gorm:"default:false"`
