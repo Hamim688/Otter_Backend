@@ -17,6 +17,10 @@ func SetupRoutes(app *fiber.App) {
 	// === ROUTE STATUS INTEGRAL ===
 	api.Get("/status", controllers.GetStatus)
 
+	// === ROUTES PROFILE ===
+	api.Get("/profile", controllers.GetProfile)
+	api.Put("/profile", controllers.UpdateProfile)
+
 	// === ROUTES PERANGKAT (Sakelar) ===
 	api.Get("/perangkat", controllers.GetPerangkat)
 	api.Put("/perangkat", controllers.UpdatePerangkat) // Pake PUT karena kita update data
