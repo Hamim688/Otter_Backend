@@ -149,6 +149,13 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				perangkat.KunciPintuRfid = false // False = Pintu terbuka
 				config.DB.Save(&perangkat)
 
+				// Set ModeKeamananAktif = false (karena ada orang masuk)
+				var otomatisasi models.Otomatisasi
+				if err := config.DB.First(&otomatisasi, 1).Error; err == nil {
+					otomatisasi.ModeKeamananAktif = false
+					config.DB.Save(&otomatisasi)
+				}
+
 				// Kirim status pintu terbaru ke ESP32 via MQTT agar Servo berputar
 				perangkatJson, _ := json.Marshal(perangkat)
 				config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)

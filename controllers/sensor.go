@@ -165,8 +165,8 @@ func UpdateSensor(c *fiber.Ctx) error {
 		config.DB.Create(&fireNotification)
 	}
 
-	// B. Sensor PIR Ruang Tamu
-	if sensorLog.TamuGerak && !latest.TamuGerak {
+	// B. Sensor PIR Ruang Tamu (Hanya jika ModeKeamananAktif = true / rumah kosong)
+	if otomatisasi.ModeKeamananAktif && sensorLog.TamuGerak && !latest.TamuGerak {
 		perangkat.BuzzerAlrm = true
 		perubahan = true
 
