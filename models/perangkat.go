@@ -1,7 +1,7 @@
 package models
 
 type Perangkat struct {
-	ID              uint `gorm:"primaryKey;default:1" json:"id"` // Selalu ID 1
+	ID              uint `gorm:"primaryKey" json:"id"` // Selalu ID 1
 	LampuKamar      bool `gorm:"default:false" json:"lampu_kamar"`
 	LampuTamu       bool `gorm:"default:false" json:"lampu_tamu"`
 	LampuKamarMandi bool `gorm:"default:false" json:"lampu_kamar_mandi"`
