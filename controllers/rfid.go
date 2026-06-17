@@ -16,6 +16,33 @@ func GetRfidCards(c *fiber.Ctx) error {
 	return c.JSON(cards)
 }
 
+// Tambah kartu RFID baru secara manual
+func CreateRfidCard(c *fiber.Ctx) error {
+	var card models.RfidCard
+	if err := c.BodyParser(&card); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Format JSON salah!"})
+	}
+	if card.UID == "" || card.NamaPemilik == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "UID dan Nama Pemilik wajib diisi!"})
+	}
+
+	var existing models.RfidCard
+	if err := config.DB.First(&existing, "uid = ?", card.UID).Error; err == nil {
+		return c.Status(400).JSON(fiber.Map{"error": "UID RFID sudah terdaftar!"})
+	}
+
+	card.Status = "aktif"
+	if err := config.DB.Create(&card).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyimpan kartu RFID baru"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "sukses",
+		"message": "Kartu RFID berhasil ditambahkan secara manual!",
+		"data":    card,
+	})
+}
+
 // Setujui pendaftaran kartu RFID baru (Ubah Unknown -> Nama Pemilik asli, Status pending -> aktif)
 func ApproveRfidCard(c *fiber.Ctx) error {
 	uid := c.Params("uid")

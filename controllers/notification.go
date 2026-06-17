@@ -16,6 +16,27 @@ func GetNotifications(c *fiber.Ctx) error {
 	return c.JSON(list)
 }
 
+// Tambah notifikasi baru secara manual dari Flutter
+func CreateNotification(c *fiber.Ctx) error {
+	var notif models.Notification
+	if err := c.BodyParser(&notif); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Format JSON salah!"})
+	}
+	if notif.ID == "" || notif.Title == "" || notif.Message == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "ID, Judul, dan Pesan wajib diisi!"})
+	}
+
+	if err := config.DB.Create(&notif).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Gagal menyimpan notifikasi"})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "sukses",
+		"message": "Notifikasi berhasil ditambahkan!",
+		"data":    notif,
+	})
+}
+
 // Tandai satu notifikasi telah dibaca
 func MarkAsRead(c *fiber.Ctx) error {
 	id := c.Params("id")
