@@ -15,7 +15,7 @@ func Seed(db *gorm.DB) {
 	if userCount == 0 {
 		dummyUser := models.User{
 			Username:    "admin",
-			Password:    "admin123",
+			Password:    "1234",
 			DisplayName: "Mimah Dudim",
 			Role:        "Administrator Rumah Pintar",
 			AvatarURL:   "",
