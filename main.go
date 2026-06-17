@@ -12,6 +12,7 @@ import (
 	"Backend/controllers"
 	"Backend/models"
 	"Backend/routes"
+	"Backend/seeder"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
@@ -31,6 +32,7 @@ func main() {
 	// 1. Inisialisasi Database
 	config.ConnectDB()
 	models.MigrateDB(config.DB)
+	seeder.Seed(config.DB)
 
 	// 2. Inisialisasi MQTT Broker
 	config.ConnectMQTT(controllers.MessagePubHandler)
