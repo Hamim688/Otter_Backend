@@ -85,6 +85,39 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				}
 			}
 		}
+
+		// C. Logika Otomatisasi (Suhu & Cahaya)
+    var aturan models.Otomatisasi
+    if err := config.DB.First(&aturan, 1).Error; err == nil {
+      perubahan := false
+      var perangkat models.Perangkat
+      config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
+
+      // 1. Cek Kipas Auto
+      if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
+        if !perangkat.KipasKamar {
+          perangkat.KipasKamar = true // Kipas nyala!
+          perubahan = true
+          fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
+        }
+      }
+
+      // 2. Cek Lampu Auto (Misal sensor LDR makin kecil angkanya makin gelap)
+      if aturan.ModeAutoLampu && payload.CahayaAtap < aturan.BatasGelapLampu {
+        if !perangkat.LampuKamar {
+          perangkat.LampuKamar = true // Lampu nyala!
+          perubahan = true
+          fmt.Println("[AUTO] Kamar Gelap! Lampu kamar otomatis MENYALA.")
+        }
+      }
+
+      // 3. Kalau sistem ngerubah kipas/lampu, simpan ke DB & lapor ke ESP32
+      if perubahan {
+        config.DB.Save(&perangkat)
+        perangkatJson, _ := json.Marshal(perangkat)
+        config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+      }
+    }
 	}
 
 	// ========================================================
