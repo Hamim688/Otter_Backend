@@ -1,27 +1,199 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
+
+	"Backend/config"
+	"Backend/models"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 )
 
-// INI WAJIB HURUF M BESAR DI AWAL: MessagePubHandler
-// Fungsi ini adalah otak tengah lu pas nerima data dari ESP32
+type SensorPayload struct {
+	CahayaAtap      int     `json:"cahaya_atap"`
+	DapurSuhu       float64 `json:"dapur_suhu"`
+	DapurKelembapan float64 `json:"dapur_kelembapan"`
+	DapurFlame      int     `json:"dapur_flame"`
+	KamarSuhu       float64 `json:"kamar_suhu"`
+	KamarKelembapan float64 `json:"kamar_kelembapan"`
+	TamuGerak       bool    `json:"tamu_gerak"`
+}
+
+type RfidPayload struct {
+	UID string `json:"uid"`
+}
+
 var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
-	payload := string(msg.Payload())
+	payloadStr := string(msg.Payload())
 
-	// Print ke terminal biar lu tau kalau ESP32 lu ngirim data
-	fmt.Printf("[MQTT MASUK] Topik: %s \n[PAYLOAD]: %s\n\n", topic, payload)
+	fmt.Printf("[MQTT MASUK] Topik: %s \n[PAYLOAD]: %s\n\n", topic, payloadStr)
 
-	// --- CONTOH LOGIKA ROUTING TOPIC ---
-	if topic == "otter_smarthome/rfid_terdaftar/scan_terbaru" {
-		fmt.Println(">> Menerima scan UID RFID dari ESP32, siap diolah!")
-		// Nanti logika nyocokin ke Database PostgreSQL ditaruh di sini
+	// ========================================================
+	// 1. LOGIKA UTK DATA SENSOR (otter_smarthome/sensor)
+	// ========================================================
+	if topic == "otter_smarthome/sensor" {
+		var payload SensorPayload
+		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+			fmt.Println("[MQTT ERROR] Gagal parse JSON sensor:", err)
+			return
+		}
+
+		// A. Simpan log sensor ke PostgreSQL
+		sensorLog := models.SensorLog{
+			CahayaAtap:      payload.CahayaAtap,
+			DapurSuhu:       payload.DapurSuhu,
+			DapurKelembapan: payload.DapurKelembapan,
+			DapurFlame:      payload.DapurFlame,
+			KamarSuhu:       payload.KamarSuhu,
+			KamarKelembapan: payload.KamarKelembapan,
+			TamuGerak:       payload.TamuGerak,
+		}
+		if err := config.DB.Create(&sensorLog).Error; err != nil {
+			fmt.Println("[DATABASE ERROR] Gagal menyimpan log sensor:", err)
+		}
+
+		// B. Logika Kebakaran Otomatis (Flame Sensor Dapur aktif)
+		if payload.DapurFlame == 1 {
+			var perangkat models.Perangkat
+			if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
+				// Aktifkan alarm & lampu merah darurat
+				if !perangkat.BuzzerAlrm || !perangkat.LedMerahDapur {
+					perangkat.BuzzerAlrm = true
+					perangkat.LedMerahDapur = true
+					config.DB.Save(&perangkat)
+
+					// Publish update perangkat terbaru ke MQTT agar ESP32 langsung bersuara
+					perangkatJson, _ := json.Marshal(perangkat)
+					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+
+					// Buat notifikasi kritis kebakaran ke database
+					fireNotification := models.Notification{
+						ID:        uuid.New().String(),
+						Title:     "Bahaya Kebakaran!",
+						Message:   "Detektor Api Dapur mendeteksi indikasi adanya kebakaran aktif!",
+						Category:  "security",
+						Priority:  "critical",
+						IsRead:    false,
+						Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+					}
+					config.DB.Create(&fireNotification)
+					fmt.Println("[FIRE ALERT] Kebakaran terdeteksi! Mengaktifkan buzzer & mengirim notifikasi.")
+				}
+			}
+		}
 	}
 
-	if topic == "otter_smarthome/sensor" {
-		// Nanti logika insert histori sensor atau cek kebakaran ditaruh di sini
+	// ========================================================
+	// 2. LOGIKA RFID SCAN (otter_smarthome/rfid_terdaftar/scan_terbaru)
+	// ========================================================
+	if topic == "otter_smarthome/rfid_terdaftar/scan_terbaru" {
+		var payload RfidPayload
+		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+			// Jika payload berupa UID string polos, pasangkan manual
+			payload.UID = payloadStr
+		}
+
+		if payload.UID == "" {
+			fmt.Println("[MQTT ERROR] UID RFID Kosong.")
+			return
+		}
+
+		var card models.RfidCard
+		result := config.DB.Where("uid = ?", payload.UID).First(&card)
+
+		if result.Error == nil {
+			// A. KARTU TERDAFTAR DAN AKTIF
+			if card.Status == "aktif" {
+				fmt.Printf("[RFID] Akses Diterima untuk: %s (%s)\n", card.NamaPemilik, card.UID)
+
+				// Unlock pintu di database
+				var perangkat models.Perangkat
+				config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
+				perangkat.KunciPintuRfid = false // False = Pintu terbuka
+				config.DB.Save(&perangkat)
+
+				// Kirim status pintu terbaru ke ESP32 via MQTT agar Servo berputar
+				perangkatJson, _ := json.Marshal(perangkat)
+				config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+
+				// Kirim feedback respons sukses ke topik khusus RFID
+				responsePayload := map[string]string{
+					"uid":          card.UID,
+					"status":       "aktif",
+					"nama_pemilik": card.NamaPemilik,
+				}
+				respJson, _ := json.Marshal(responsePayload)
+				config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
+
+				// Buat notifikasi sukses masuk
+				newNotification := models.Notification{
+					ID:        uuid.New().String(),
+					Title:     "Akses Pintu Utama",
+					Message:   fmt.Sprintf("Akses masuk berhasil dibuka oleh %s via RFID.", card.NamaPemilik),
+					Category:  "security",
+					Priority:  "info",
+					IsRead:    false,
+					Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				}
+				config.DB.Create(&newNotification)
+
+			} else if card.Status == "menunggu" {
+				// B. KARTU SEDANG MENUNGGU PERSETUJUAN
+				fmt.Printf("[RFID] Akses Tertunda: Kartu %s masih menunggu persetujuan.\n", card.UID)
+				
+				responsePayload := map[string]string{
+					"uid":    card.UID,
+					"status": "menunggu",
+				}
+				respJson, _ := json.Marshal(responsePayload)
+				config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
+
+			} else {
+				// C. KARTU DINONAKTIFKAN
+				fmt.Printf("[RFID] Akses Ditolak: Kartu %s dinonaktifkan.\n", card.UID)
+				
+				responsePayload := map[string]string{
+					"uid":    card.UID,
+					"status": "nonaktif",
+				}
+				respJson, _ := json.Marshal(responsePayload)
+				config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
+			}
+		} else {
+			// D. KARTU BARU/ASING (BELUM TERDAFTAR DI DATABASE)
+			fmt.Printf("[RFID] Kartu Baru Terdeteksi: %s. Menyimpan ke database sebagai 'menunggu'...\n", payload.UID)
+
+			// Simpan kartu baru dengan status 'menunggu' agar bisa disetujui dari HP
+			newCard := models.RfidCard{
+				UID:         payload.UID,
+				NamaPemilik: "Unknown Card",
+				Status:      "menunggu",
+			}
+			config.DB.Create(&newCard)
+
+			// Kirim response status menunggu ke ESP32 agar berbunyi bip alarm penolakan
+			responsePayload := map[string]string{
+				"uid":    payload.UID,
+				"status": "menunggu",
+			}
+			respJson, _ := json.Marshal(responsePayload)
+			config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
+
+			// Buat notifikasi peringatan kartu asing terdeteksi
+			warnNotification := models.Notification{
+				ID:        uuid.New().String(),
+				Title:     "Peringatan RFID Asing",
+				Message:   fmt.Sprintf("Kartu RFID asing dengan UID %s terdeteksi menempel pada alat.", payload.UID),
+				Category:  "security",
+				Priority:  "warning",
+				IsRead:    false,
+				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+			}
+			config.DB.Create(&warnNotification)
+		}
 	}
 }

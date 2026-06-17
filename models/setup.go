@@ -13,6 +13,7 @@ func MigrateDB(db *gorm.DB) {
 		&Notification{},
 		&Perangkat{},
 		&Otomatisasi{},
+		&SensorLog{},
 	)
 	
 	if err != nil {
@@ -20,4 +21,7 @@ func MigrateDB(db *gorm.DB) {
 	}
 	
 	log.Println("[DATABASE] Semua tabel berhasil di-migrate ke PostgreSQL! 🚀")
+
+	// Panggil seeder terpisah
+	Seed(db)
 }
