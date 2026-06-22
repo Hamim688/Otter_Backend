@@ -154,6 +154,11 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				if err := config.DB.First(&otomatisasi, 1).Error; err == nil {
 					otomatisasi.ModeKeamananAktif = false
 					config.DB.Save(&otomatisasi)
+
+					// Kode Untuk AI 
+					statusKeamanan := map[string]bool{"mode_keamanan_aktif": false}
+          statusJson, _ := json.Marshal(statusKeamanan)
+          config.MQTTClient.Publish("otter_smarthome/keamanan/mode", 0, true, statusJson)
 				}
 
 				// Kirim status pintu terbaru ke ESP32 via MQTT agar Servo berputar
@@ -235,5 +240,41 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			}
 			config.DB.Create(&warnNotification)
 		}
+
+		// ========================================================
+  // 3. LOGIKA AI ALERT (otter_smarthome/ai_alert)
+  // ========================================================
+  if topic == "otter_smarthome/ai_alert" {
+    fmt.Printf("[🚨 ALARM AI] %s\n", payloadStr)
+
+    var alertData map[string]string
+    if err := json.Unmarshal(msg.Payload(), &alertData); err == nil {
+        
+      // A. Simpan peringatan ke database biar HP Rafa dapet notif
+      newNotification := models.Notification{
+        ID:        uuid.New().String(),
+        Title:     alertData["status"], // Isinya "BAHAYA" dari Python
+        Message:   alertData["pesan"],  // Isinya "AI mendeteksi anomali..."
+        Category:  "security",
+        Priority:  "critical",
+        IsRead:    false,
+        Timestamp: alertData["timestamp"],
+      }
+      config.DB.Create(&newNotification)
+
+      // B. Otomatis nyalain Sirine (Buzzer) di ESP32
+      var perangkat models.Perangkat
+      if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
+        if !perangkat.BuzzerAlrm {
+          perangkat.BuzzerAlrm = true
+          config.DB.Save(&perangkat)
+
+          // Tembak perintah ke ESP32 buat bunyiin buzzer
+          perangkatJson, _ := json.Marshal(perangkat)
+          config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+        }
+      }
+    }
+  }
 	}
 }
