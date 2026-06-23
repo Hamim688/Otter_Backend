@@ -67,7 +67,8 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
       // 1. Cek Kipas Auto
       if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
         if !perangkat.KipasKamar {
-          perangkat.KipasKamar = true // Kipas nyala!
+          perangkat.KipasKamar = true
+          perangkat.KecepatanKipas = 255 // Kecepatan penuh saat auto nyala
           perubahan = true
           fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
         }
