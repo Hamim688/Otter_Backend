@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 type HistoryResponse struct {
@@ -146,42 +145,6 @@ func UpdateSensor(c *fiber.Ctx) error {
 
 	perubahan := false
 
-	// A. Flame Sensor Dapur
-	if sensorLog.DapurFlame == 1 && latest.DapurFlame != 1 {
-		perangkat.BuzzerAlrm = true
-		perangkat.LedMerahDapur = true
-		perubahan = true
-
-		// Kirim notifikasi bahaya kebakaran
-		fireNotification := models.Notification{
-			ID:        uuid.New().String(),
-			Title:     "Bahaya Kebakaran!",
-			Message:   "Detektor Api Dapur mendeteksi indikasi adanya kebakaran aktif!",
-			Category:  "security",
-			Priority:  "critical",
-			IsRead:    false,
-			Timestamp: time.Now().Format("2006-01-02 15:04:05"),
-		}
-		config.DB.Create(&fireNotification)
-	}
-
-	// B. Sensor PIR Ruang Tamu (Hanya jika ModeKeamananAktif = true / rumah kosong)
-	if otomatisasi.ModeKeamananAktif && sensorLog.TamuGerak && !latest.TamuGerak {
-		perangkat.BuzzerAlrm = true
-		perubahan = true
-
-		// Kirim notifikasi anomali terdeteksi
-		pirNotification := models.Notification{
-			ID:        uuid.New().String(),
-			Title:     "Anomali Terdeteksi",
-			Message:   "Ada anomali terdeteksi oleh PIR sensor di Ruang Tamu.",
-			Category:  "security",
-			Priority:  "critical",
-			IsRead:    false,
-			Timestamp: time.Now().Format("2006-01-02 15:04:05"),
-		}
-		config.DB.Create(&pirNotification)
-	}
 
 	// C. Otomatisasi Suhu Kipas
 	if otomatisasi.ModeAutoKipas {

@@ -56,35 +56,6 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			fmt.Println("[DATABASE ERROR] Gagal menyimpan log sensor:", err)
 		}
 
-		// B. Logika Kebakaran Otomatis (Flame Sensor Dapur aktif)
-		if payload.DapurFlame == 1 {
-			var perangkat models.Perangkat
-			if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
-				// Aktifkan alarm & lampu merah darurat
-				if !perangkat.BuzzerAlrm || !perangkat.LedMerahDapur {
-					perangkat.BuzzerAlrm = true
-					perangkat.LedMerahDapur = true
-					config.DB.Save(&perangkat)
-
-					// Publish update perangkat terbaru ke MQTT agar ESP32 langsung bersuara
-					perangkatJson, _ := json.Marshal(perangkat)
-					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
-
-					// Buat notifikasi kritis kebakaran ke database
-					fireNotification := models.Notification{
-						ID:        uuid.New().String(),
-						Title:     "Bahaya Kebakaran!",
-						Message:   "Detektor Api Dapur mendeteksi indikasi adanya kebakaran aktif!",
-						Category:  "security",
-						Priority:  "critical",
-						IsRead:    false,
-						Timestamp: time.Now().Format("2006-01-02 15:04:05"),
-					}
-					config.DB.Create(&fireNotification)
-					fmt.Println("[FIRE ALERT] Kebakaran terdeteksi! Mengaktifkan buzzer & mengirim notifikasi.")
-				}
-			}
-		}
 
 		// C. Logika Otomatisasi (Suhu & Cahaya)
     var aturan models.Otomatisasi
@@ -240,41 +211,41 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			}
 			config.DB.Create(&warnNotification)
 		}
+	}
 
-		// ========================================================
-  // 3. LOGIKA AI ALERT (otter_smarthome/ai_alert)
-  // ========================================================
-  if topic == "otter_smarthome/ai_alert" {
-    fmt.Printf("[🚨 ALARM AI] %s\n", payloadStr)
+	// ========================================================
+	// 3. LOGIKA AI ALERT (otter_smarthome/ai_alert)
+	// ========================================================
+	if topic == "otter_smarthome/ai_alert" {
+		fmt.Printf("[🚨 ALARM AI] %s\n", payloadStr)
 
-    var alertData map[string]string
-    if err := json.Unmarshal(msg.Payload(), &alertData); err == nil {
-        
-      // A. Simpan peringatan ke database biar HP Rafa dapet notif
-      newNotification := models.Notification{
-        ID:        uuid.New().String(),
-        Title:     alertData["status"], // Isinya "BAHAYA" dari Python
-        Message:   alertData["pesan"],  // Isinya "AI mendeteksi anomali..."
-        Category:  "security",
-        Priority:  "critical",
-        IsRead:    false,
-        Timestamp: alertData["timestamp"],
-      }
-      config.DB.Create(&newNotification)
+		var alertData map[string]string
+		if err := json.Unmarshal(msg.Payload(), &alertData); err == nil {
 
-      // B. Otomatis nyalain Sirine (Buzzer) di ESP32
-      var perangkat models.Perangkat
-      if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
-        if !perangkat.BuzzerAlrm {
-          perangkat.BuzzerAlrm = true
-          config.DB.Save(&perangkat)
+			// A. Simpan peringatan ke database biar HP Rafa dapet notif
+			newNotification := models.Notification{
+				ID:        uuid.New().String(),
+				Title:     alertData["status"], // Isinya "BAHAYA" dari Python
+				Message:   alertData["pesan"],  // Isinya "AI mendeteksi anomali..."
+				Category:  "security",
+				Priority:  "critical",
+				IsRead:    false,
+				Timestamp: alertData["timestamp"],
+			}
+			config.DB.Create(&newNotification)
 
-          // Tembak perintah ke ESP32 buat bunyiin buzzer
-          perangkatJson, _ := json.Marshal(perangkat)
-          config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
-        }
-      }
-    }
-  }
+			// B. Otomatis nyalain Sirine (Buzzer) di ESP32
+			var perangkat models.Perangkat
+			if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
+				if !perangkat.BuzzerAlrm {
+					perangkat.BuzzerAlrm = true
+					config.DB.Save(&perangkat)
+
+					// Tembak perintah ke ESP32 buat bunyiin buzzer
+					perangkatJson, _ := json.Marshal(perangkat)
+					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+				}
+			}
+		}
 	}
 }
