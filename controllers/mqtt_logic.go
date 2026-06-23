@@ -42,9 +42,18 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			return
 		}
 
+		// Konversi CahayaAtap (LDR) ke Persentase (0-100%)
+		// Asumsi ESP32 ADC Max = 4095. Semakin terang, nilai persentase semakin tinggi (mendekati 100%).
+		cahayaPercentage := 100 - int((float64(payload.CahayaAtap)/4095.0)*100)
+		if cahayaPercentage < 0 {
+			cahayaPercentage = 0
+		} else if cahayaPercentage > 100 {
+			cahayaPercentage = 100
+		}
+
 		// A. Simpan log sensor ke PostgreSQL
 		sensorLog := models.SensorLog{
-			CahayaAtap:      payload.CahayaAtap,
+			CahayaAtap:      cahayaPercentage,
 			DapurSuhu:       payload.DapurSuhu,
 			DapurKelembapan: payload.DapurKelembapan,
 			DapurFlame:      payload.DapurFlame,
@@ -56,31 +65,30 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			fmt.Println("[DATABASE ERROR] Gagal menyimpan log sensor:", err)
 		}
 
-
 		// C. Logika Otomatisasi (Suhu & Cahaya)
-    var aturan models.Otomatisasi
-    if err := config.DB.First(&aturan, 1).Error; err == nil {
-      perubahan := false
-      var perangkat models.Perangkat
-      config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
+		var aturan models.Otomatisasi
+		if err := config.DB.First(&aturan, 1).Error; err == nil {
+			perubahan := false
+			var perangkat models.Perangkat
+			config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
 
-      // 1. Cek Kipas Auto
-      if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
-        if !perangkat.KipasKamar {
-          perangkat.KipasKamar = true // Kipas nyala!
-          perubahan = true
-          fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
-        }
-      }
+			// 1. Cek Kipas Auto
+			if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
+				if !perangkat.KipasKamar {
+					perangkat.KipasKamar = true // Kipas nyala!
+					perubahan = true
+					fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
+				}
+			}
 
-      // 2. Cek Lampu Auto (Misal sensor LDR makin kecil angkanya makin gelap)
-      if aturan.ModeAutoLampu && payload.CahayaAtap < aturan.BatasGelapLampu {
-        if !perangkat.LampuKamar {
-          perangkat.LampuKamar = true // Lampu nyala!
-          perubahan = true
-          fmt.Println("[AUTO] Kamar Gelap! Lampu kamar otomatis MENYALA.")
-        }
-      }
+			// 2. Cek Lampu Auto
+			if aturan.ModeAutoLampu && cahayaPercentage < aturan.BatasGelapLampu {
+				if !perangkat.LampuKamar {
+					perangkat.LampuKamar = true // Lampu nyala!
+					perubahan = true
+					fmt.Println("[AUTO] Kamar Gelap! Lampu kamar otomatis MENYALA.")
+				}
+			}
 
       // 3. Kalau sistem ngerubah kipas/lampu, simpan ke DB & lapor ke ESP32
       if perubahan {
@@ -135,6 +143,23 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				// Kirim status pintu terbaru ke ESP32 via MQTT agar Servo berputar
 				perangkatJson, _ := json.Marshal(perangkat)
 				config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+
+				// [FITUR BARU] Auto-Lock Pintu Setelah 5 Detik
+				time.AfterFunc(5*time.Second, func() {
+					fmt.Println("[AUTO-LOCK] 5 detik berlalu. Mengunci pintu kembali...")
+					
+					var p models.Perangkat
+					if err := config.DB.First(&p, 1).Error; err == nil {
+						if !p.KunciPintuRfid { // Jika masih terbuka
+							p.KunciPintuRfid = true // Kunci kembali
+							config.DB.Save(&p)
+							
+							pJson, _ := json.Marshal(p)
+							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+							fmt.Println("[AUTO-LOCK] Pintu berhasil dikunci.")
+						}
+					}
+				})
 
 				// Kirim feedback respons sukses ke topik khusus RFID
 				responsePayload := map[string]string{
