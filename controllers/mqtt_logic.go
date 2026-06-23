@@ -72,14 +72,15 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			var perangkat models.Perangkat
 			config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
 
-			// 1. Cek Kipas Auto
-			if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
-				if !perangkat.KipasKamar {
-					perangkat.KipasKamar = true // Kipas nyala!
-					perubahan = true
-					fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
-				}
-			}
+      // 1. Cek Kipas Auto
+      if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
+        if !perangkat.KipasKamar {
+          perangkat.KipasKamar = true
+          perangkat.KecepatanKipas = 255 // Kecepatan penuh saat auto nyala
+          perubahan = true
+          fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
+        }
+      }
 
 			// 2. Cek Lampu Auto
 			if aturan.ModeAutoLampu && cahayaPercentage < aturan.BatasGelapLampu {
