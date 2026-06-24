@@ -197,56 +197,6 @@ func UpdateSensor(c *fiber.Ctx) error {
 		}
 	}
 
-	// E. Logika Kebakaran Otomatis (Flame Sensor)
-	if sensorLog.DapurFlame == 1 {
-		if !perangkat.BuzzerAlrm {
-			perangkat.BuzzerAlrm = true
-			perubahan = true
-		}
-		if !perangkat.LedMerahDapur {
-			perangkat.LedMerahDapur = true
-			perubahan = true
-
-			// Jalankan blinking goroutine khusus kebakaran
-			go func() {
-				ledState := true
-				for {
-					var p models.Perangkat
-					if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
-						p.LedMerahDapur = false
-						config.DB.Save(&p)
-						pJson, _ := json.Marshal(p)
-						if config.MQTTClient != nil && config.MQTTClient.IsConnected() {
-							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-						}
-						break
-					}
-
-					var s models.SensorLog
-					if err := config.DB.Order("created_at desc").First(&s).Error; err != nil || s.DapurFlame == 0 {
-						p.LedMerahDapur = false
-						config.DB.Save(&p)
-						pJson, _ := json.Marshal(p)
-						if config.MQTTClient != nil && config.MQTTClient.IsConnected() {
-							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-						}
-						break
-					}
-
-					p.LedMerahDapur = ledState
-					config.DB.Save(&p)
-					pJson, _ := json.Marshal(p)
-					if config.MQTTClient != nil && config.MQTTClient.IsConnected() {
-						config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-					}
-
-					ledState = !ledState
-					time.Sleep(1 * time.Second)
-				}
-			}()
-		}
-	}
-
 	if perubahan {
 		config.DB.Save(&perangkat)
 		// Kirim update ke MQTT jika client terhubung

@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"Backend/config"
@@ -92,65 +93,13 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			}
 
       // 3. Kalau sistem ngerubah kipas/lampu, simpan ke DB & lapor ke ESP32
+      // 3. Kalau sistem ngerubah kipas/lampu, simpan ke DB & lapor ke ESP32
       if perubahan {
         config.DB.Save(&perangkat)
         perangkatJson, _ := json.Marshal(perangkat)
         config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
       }
     }
-
-		// D. Logika Kebakaran Otomatis (Flame Sensor)
-		if payload.DapurFlame == 1 {
-			var perangkat models.Perangkat
-			if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
-				perubahan := false
-				if !perangkat.BuzzerAlrm {
-					perangkat.BuzzerAlrm = true
-					perubahan = true
-				}
-				if !perangkat.LedMerahDapur {
-					perangkat.LedMerahDapur = true
-					perubahan = true
-
-					// Jalankan blinking goroutine khusus kebakaran
-					go func() {
-						ledState := true
-						for {
-							var p models.Perangkat
-							if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
-								p.LedMerahDapur = false
-								config.DB.Save(&p)
-								pJson, _ := json.Marshal(p)
-								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-								break
-							}
-
-							var s models.SensorLog
-							if err := config.DB.Order("created_at desc").First(&s).Error; err != nil || s.DapurFlame == 0 {
-								p.LedMerahDapur = false
-								config.DB.Save(&p)
-								pJson, _ := json.Marshal(p)
-								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-								break
-							}
-
-							p.LedMerahDapur = ledState
-							config.DB.Save(&p)
-							pJson, _ := json.Marshal(p)
-							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-
-							ledState = !ledState
-							time.Sleep(1 * time.Second)
-						}
-					}()
-				}
-				if perubahan {
-					config.DB.Save(&perangkat)
-					perangkatJson, _ := json.Marshal(perangkat)
-					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
-				}
-			}
-		}
 	}
 
 	// ========================================================
@@ -340,11 +289,74 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			// B. Otomatis nyalain Sirine (Buzzer) di ESP32
 			var perangkat models.Perangkat
 			if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
+				perubahan := false
 				if !perangkat.BuzzerAlrm {
 					perangkat.BuzzerAlrm = true
-					config.DB.Save(&perangkat)
+					perubahan = true
+				}
 
-					// Tembak perintah ke ESP32 buat bunyiin buzzer
+				// Cek apakah ini alert kebakaran (dari isi pesan AI atau dari sensor flame aktif)
+				var latestSensor models.SensorLog
+				config.DB.Order("created_at desc").First(&latestSensor)
+
+				msgLower := ""
+				if alertData["pesan"] != "" {
+					msgLower = strings.ToLower(alertData["pesan"])
+				}
+				titleLower := ""
+				if alertData["status"] != "" {
+					titleLower = strings.ToLower(alertData["status"])
+				}
+
+				isFireAlert := latestSensor.DapurFlame == 1 || 
+					strings.Contains(msgLower, "api") || 
+					strings.Contains(msgLower, "kebakaran") || 
+					strings.Contains(msgLower, "flame") ||
+					strings.Contains(titleLower, "api") || 
+					strings.Contains(titleLower, "kebakaran") || 
+					strings.Contains(titleLower, "flame")
+
+				if isFireAlert {
+					if !perangkat.LedMerahDapur {
+						perangkat.LedMerahDapur = true
+						perubahan = true
+
+						// Jalankan blinking goroutine khusus kebakaran
+						go func() {
+							ledState := true
+							for {
+								var p models.Perangkat
+								if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
+									p.LedMerahDapur = false
+									config.DB.Save(&p)
+									pJson, _ := json.Marshal(p)
+									config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+									break
+								}
+
+								var s models.SensorLog
+								if err := config.DB.Order("created_at desc").First(&s).Error; err != nil || s.DapurFlame == 0 {
+									p.LedMerahDapur = false
+									config.DB.Save(&p)
+									pJson, _ := json.Marshal(p)
+									config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+									break
+								}
+
+								p.LedMerahDapur = ledState
+								config.DB.Save(&p)
+								pJson, _ := json.Marshal(p)
+								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+
+								ledState = !ledState
+								time.Sleep(1 * time.Second)
+							}
+						}()
+					}
+				}
+
+				if perubahan {
+					config.DB.Save(&perangkat)
 					perangkatJson, _ := json.Marshal(perangkat)
 					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
 				}
