@@ -26,6 +26,7 @@ func ConnectMQTT(messageHandler mqtt.MessageHandler) {
 		c.Subscribe("otter_smarthome/sensor", 0, nil)
 		c.Subscribe("otter_smarthome/rfid_terdaftar/scan_terbaru", 0, nil)
 		c.Subscribe("otter_smarthome/ai_alert", 0, nil)
+		c.Subscribe("otter_smarthome/device_boot", 0, nil)
 	}
 
 	opts.OnConnectionLost = func(c mqtt.Client, err error) {

@@ -379,4 +379,15 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			}
 		}
 	}
+
+	// ========================================================
+	// 4. LOGIKA DEVICE BOOT (otter_smarthome/device_boot)
+	// ========================================================
+	if topic == "otter_smarthome/device_boot" {
+		fmt.Println("[MQTT] ESP32 baru saja booting. Mengirimkan status perangkat awal...")
+		var perangkat models.Perangkat
+		config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
+		perangkatJson, _ := json.Marshal(perangkat)
+		config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+	}
 }
