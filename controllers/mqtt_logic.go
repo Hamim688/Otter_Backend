@@ -208,11 +208,11 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				respJson, _ := json.Marshal(responsePayload)
 				config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
 
-				// Cek apakah baru-baru ini (misal dalam 15 detik terakhir) sudah ada notifikasi serupa
+				// Cek apakah baru-baru ini (misal dalam 5 detik terakhir) sudah ada notifikasi serupa
 				var lastNotif models.Notification
-				fifteenSecondsAgo := time.Now().Add(-15 * time.Second).Format("2006-01-02 15:04:05")
+				fiveSecondsAgo := time.Now().Add(-5 * time.Second).Format("2006-01-02 15:04:05")
 				err := config.DB.Where("category = ? AND priority = ? AND message LIKE ? AND timestamp >= ?", 
-					"security", "warning", "%"+card.UID+"%", fifteenSecondsAgo).First(&lastNotif).Error
+					"security", "warning", "%"+card.UID+"%", fiveSecondsAgo).First(&lastNotif).Error
 				if err != nil {
 					// Buat notifikasi peringatan kartu pending menempel
 					pendingNotification := models.Notification{
@@ -250,11 +250,11 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			respJson, _ := json.Marshal(responsePayload)
 			config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
 
-			// Cek apakah baru-baru ini (misal dalam 15 detik terakhir) sudah ada notifikasi serupa
+			// Cek apakah baru-baru ini (misal dalam 5 detik terakhir) sudah ada notifikasi serupa
 			var lastNotif models.Notification
-			fifteenSecondsAgo := time.Now().Add(-15 * time.Second).Format("2006-01-02 15:04:05")
+			fiveSecondsAgo := time.Now().Add(-5 * time.Second).Format("2006-01-02 15:04:05")
 			err := config.DB.Where("category = ? AND priority = ? AND message LIKE ? AND timestamp >= ?", 
-				"security", "warning", "%"+payload.UID+"%", fifteenSecondsAgo).First(&lastNotif).Error
+				"security", "warning", "%"+payload.UID+"%", fiveSecondsAgo).First(&lastNotif).Error
 			if err != nil {
 				// Simpan kartu baru dengan status 'menunggu' agar bisa disetujui dari HP
 				newCard := models.RfidCard{
