@@ -3,9 +3,6 @@ package controllers
 import (
 	"Backend/config"
 	"Backend/models"
-	"encoding/json"
-	"fmt"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
