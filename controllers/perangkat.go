@@ -36,24 +36,7 @@ func UpdatePerangkat(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Format JSON salah!"})
 	}
 
-	// 3. Jika status kunci pintu RFID berubah secara manual dari HP
-	if oldPerangkat.KunciPintuRfid != perangkat.KunciPintuRfid {
-		statusStr := "dibuka"
-		if perangkat.KunciPintuRfid {
-			statusStr = "dikunci"
-		}
-		
-		manualNotification := models.Notification{
-			ID:        uuid.New().String(),
-			Title:     "Kontrol Pintu Manual",
-			Message:   "Pintu utama berhasil " + statusStr + " secara manual dari HP.",
-			Category:  "security",
-			Priority:  "info",
-			IsRead:    false,
-			Timestamp: time.Now().Format("2006-01-02 15:04:05"),
-		}
-		config.DB.Create(&manualNotification)
-	}
+
 
 	// 4. Save ke PostgreSQL
 	config.DB.Save(&perangkat)

@@ -157,18 +157,6 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 							p.KunciPintuRfid = true // Kunci kembali
 							config.DB.Save(&p)
 							
-							// Buat notifikasi pintu terkunci otomatis
-							autoNotification := models.Notification{
-								ID:        uuid.New().String(),
-								Title:     "Pintu Terkunci Otomatis",
-								Message:   "Pintu utama dikunci kembali secara otomatis oleh sistem.",
-								Category:  "security",
-								Priority:  "info",
-								IsRead:    false,
-								Timestamp: time.Now().Format("2006-01-02 15:04:05"),
-							}
-							config.DB.Create(&autoNotification)
-
 							pJson, _ := json.Marshal(p)
 							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
 							fmt.Println("[AUTO-LOCK] Pintu berhasil dikunci.")
