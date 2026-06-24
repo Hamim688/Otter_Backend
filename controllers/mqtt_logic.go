@@ -208,17 +208,24 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				respJson, _ := json.Marshal(responsePayload)
 				config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
 
-				// Buat notifikasi peringatan kartu pending menempel
-				pendingNotification := models.Notification{
-					ID:        uuid.New().String(),
-					Title:     "Akses RFID Tertunda",
-					Message:   fmt.Sprintf("Kartu RFID asing dengan UID %s mencoba mengakses pintu kembali. Status: Menunggu Persetujuan.", card.UID),
-					Category:  "security",
-					Priority:  "warning",
-					IsRead:    false,
-					Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				// Cek apakah baru-baru ini (misal dalam 15 detik terakhir) sudah ada notifikasi serupa
+				var lastNotif models.Notification
+				fifteenSecondsAgo := time.Now().Add(-15 * time.Second).Format("2006-01-02 15:04:05")
+				err := config.DB.Where("category = ? AND priority = ? AND message LIKE ? AND timestamp >= ?", 
+					"security", "warning", "%"+card.UID+"%", fifteenSecondsAgo).First(&lastNotif).Error
+				if err != nil {
+					// Buat notifikasi peringatan kartu pending menempel
+					pendingNotification := models.Notification{
+						ID:        uuid.New().String(),
+						Title:     "Akses RFID Tertunda",
+						Message:   fmt.Sprintf("Kartu RFID asing dengan UID %s mencoba mengakses pintu kembali. Status: Menunggu Persetujuan.", card.UID),
+						Category:  "security",
+						Priority:  "warning",
+						IsRead:    false,
+						Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+					}
+					config.DB.Create(&pendingNotification)
 				}
-				config.DB.Create(&pendingNotification)
 
 			} else {
 				// C. KARTU DINONAKTIFKAN
@@ -235,14 +242,6 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			// D. KARTU BARU/ASING (BELUM TERDAFTAR DI DATABASE)
 			fmt.Printf("[RFID] Kartu Baru Terdeteksi: %s. Menyimpan ke database sebagai 'menunggu'...\n", payload.UID)
 
-			// Simpan kartu baru dengan status 'menunggu' agar bisa disetujui dari HP
-			newCard := models.RfidCard{
-				UID:         payload.UID,
-				NamaPemilik: "Unknown Card",
-				Status:      "menunggu",
-			}
-			config.DB.Create(&newCard)
-
 			// Kirim response status menunggu ke ESP32 agar berbunyi bip alarm penolakan
 			responsePayload := map[string]string{
 				"uid":    payload.UID,
@@ -251,17 +250,32 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			respJson, _ := json.Marshal(responsePayload)
 			config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
 
-			// Buat notifikasi peringatan kartu asing terdeteksi
-			warnNotification := models.Notification{
-				ID:        uuid.New().String(),
-				Title:     "Peringatan RFID Asing",
-				Message:   fmt.Sprintf("Kartu RFID asing dengan UID %s terdeteksi menempel pada alat.", payload.UID),
-				Category:  "security",
-				Priority:  "warning",
-				IsRead:    false,
-				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+			// Cek apakah baru-baru ini (misal dalam 15 detik terakhir) sudah ada notifikasi serupa
+			var lastNotif models.Notification
+			fifteenSecondsAgo := time.Now().Add(-15 * time.Second).Format("2006-01-02 15:04:05")
+			err := config.DB.Where("category = ? AND priority = ? AND message LIKE ? AND timestamp >= ?", 
+				"security", "warning", "%"+payload.UID+"%", fifteenSecondsAgo).First(&lastNotif).Error
+			if err != nil {
+				// Simpan kartu baru dengan status 'menunggu' agar bisa disetujui dari HP
+				newCard := models.RfidCard{
+					UID:         payload.UID,
+					NamaPemilik: "Unknown Card",
+					Status:      "menunggu",
+				}
+				config.DB.Create(&newCard)
+
+				// Buat notifikasi peringatan kartu asing terdeteksi
+				warnNotification := models.Notification{
+					ID:        uuid.New().String(),
+					Title:     "Peringatan RFID Asing",
+					Message:   fmt.Sprintf("Kartu RFID asing dengan UID %s terdeteksi menempel pada alat.", payload.UID),
+					Category:  "security",
+					Priority:  "warning",
+					IsRead:    false,
+					Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				}
+				config.DB.Create(&warnNotification)
 			}
-			config.DB.Create(&warnNotification)
 		}
 	}
 
