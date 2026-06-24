@@ -112,6 +112,8 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			payload.UID = payloadStr
 		}
 
+		payload.UID = strings.TrimSpace(payload.UID)
+
 		if payload.UID == "" {
 			fmt.Println("[MQTT ERROR] UID RFID Kosong.")
 			return
