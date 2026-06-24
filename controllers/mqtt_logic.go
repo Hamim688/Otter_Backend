@@ -98,6 +98,59 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
         config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
       }
     }
+
+		// D. Logika Kebakaran Otomatis (Flame Sensor)
+		if payload.DapurFlame == 1 {
+			var perangkat models.Perangkat
+			if err := config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1}).Error; err == nil {
+				perubahan := false
+				if !perangkat.BuzzerAlrm {
+					perangkat.BuzzerAlrm = true
+					perubahan = true
+				}
+				if !perangkat.LedMerahDapur {
+					perangkat.LedMerahDapur = true
+					perubahan = true
+
+					// Jalankan blinking goroutine khusus kebakaran
+					go func() {
+						ledState := true
+						for {
+							var p models.Perangkat
+							if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
+								p.LedMerahDapur = false
+								config.DB.Save(&p)
+								pJson, _ := json.Marshal(p)
+								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+								break
+							}
+
+							var s models.SensorLog
+							if err := config.DB.Order("created_at desc").First(&s).Error; err != nil || s.DapurFlame == 0 {
+								p.LedMerahDapur = false
+								config.DB.Save(&p)
+								pJson, _ := json.Marshal(p)
+								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+								break
+							}
+
+							p.LedMerahDapur = ledState
+							config.DB.Save(&p)
+							pJson, _ := json.Marshal(p)
+							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+
+							ledState = !ledState
+							time.Sleep(1 * time.Second)
+						}
+					}()
+				}
+				if perubahan {
+					config.DB.Save(&perangkat)
+					perangkatJson, _ := json.Marshal(perangkat)
+					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+				}
+			}
+		}
 	}
 
 	// ========================================================
@@ -155,6 +208,18 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 							p.KunciPintuRfid = true // Kunci kembali
 							config.DB.Save(&p)
 							
+							// Buat notifikasi pintu terkunci otomatis
+							autoNotification := models.Notification{
+								ID:        uuid.New().String(),
+								Title:     "Pintu Terkunci Otomatis",
+								Message:   "Pintu utama dikunci kembali secara otomatis oleh sistem.",
+								Category:  "security",
+								Priority:  "info",
+								IsRead:    false,
+								Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+							}
+							config.DB.Create(&autoNotification)
+
 							pJson, _ := json.Marshal(p)
 							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
 							fmt.Println("[AUTO-LOCK] Pintu berhasil dikunci.")
@@ -282,33 +347,6 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					// Tembak perintah ke ESP32 buat bunyiin buzzer
 					perangkatJson, _ := json.Marshal(perangkat)
 					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
-					
-					// [FITUR BARU] Kedip LED Merah Dapur (1-0-1-0) setiap 1 detik saat alarm aktif
-					go func() {
-						ledState := true
-						for {
-							// Cek apakah alarm masih aktif di database
-							var p models.Perangkat
-							if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
-								// Jika alarm dimatikan (Disarm), pastikan LED Merah mati lalu keluar dari loop
-								p.LedMerahDapur = false
-								config.DB.Save(&p)
-								pJson, _ := json.Marshal(p)
-								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-								break
-							}
-
-							// Toggle state LED
-							p.LedMerahDapur = ledState
-							config.DB.Save(&p)
-							
-							pJson, _ := json.Marshal(p)
-							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-
-							ledState = !ledState // balikkan status untuk iterasi berikutnya (kedip)
-							time.Sleep(1 * time.Second)
-						}
-					}()
 				}
 			}
 		}

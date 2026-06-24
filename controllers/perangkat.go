@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"Backend/config"
 	"Backend/models"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // Ambil Status Perangkat Saat Ini
@@ -22,20 +24,41 @@ func GetPerangkat(c *fiber.Ctx) error {
 func UpdatePerangkat(c *fiber.Ctx) error {
 	var perangkat models.Perangkat
 
-	// 1. Cek apakah perangkat ID 1 ada di database
-	if err := config.DB.First(&perangkat, 1).Error; err != nil {
+	// 1. Ambil data lama sebelum di-update untuk pembanding
+	var oldPerangkat models.Perangkat
+	if err := config.DB.First(&oldPerangkat, 1).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Data perangkat tidak ditemukan"})
 	}
 
 	// 2. Timpa data lama dengan data baru dari JSON Flutter
+	perangkat = oldPerangkat // Jaga agar ID tetap 1
 	if err := c.BodyParser(&perangkat); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Format JSON salah!"})
 	}
 
-	// 3. Save ke PostgreSQL
+	// 3. Jika status kunci pintu RFID berubah secara manual dari HP
+	if oldPerangkat.KunciPintuRfid != perangkat.KunciPintuRfid {
+		statusStr := "dibuka"
+		if perangkat.KunciPintuRfid {
+			statusStr = "dikunci"
+		}
+		
+		manualNotification := models.Notification{
+			ID:        uuid.New().String(),
+			Title:     "Kontrol Pintu Manual",
+			Message:   "Pintu utama berhasil " + statusStr + " secara manual dari HP.",
+			Category:  "security",
+			Priority:  "info",
+			IsRead:    false,
+			Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+		}
+		config.DB.Create(&manualNotification)
+	}
+
+	// 4. Save ke PostgreSQL
 	config.DB.Save(&perangkat)
 
-	// 4. PUBLISH KE MQTT BIAR ESP32 LANGSUNG GERAK!
+	// 5. PUBLISH KE MQTT BIAR ESP32 LANGSUNG GERAK!
 	payload, _ := json.Marshal(perangkat)
 	config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, payload)
 
