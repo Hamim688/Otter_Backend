@@ -194,6 +194,18 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				respJson, _ := json.Marshal(responsePayload)
 				config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
 
+				// Buat notifikasi peringatan kartu pending menempel
+				pendingNotification := models.Notification{
+					ID:        uuid.New().String(),
+					Title:     "Akses RFID Tertunda",
+					Message:   fmt.Sprintf("Kartu RFID asing dengan UID %s mencoba mengakses pintu kembali. Status: Menunggu Persetujuan.", card.UID),
+					Category:  "security",
+					Priority:  "warning",
+					IsRead:    false,
+					Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				}
+				config.DB.Create(&pendingNotification)
+
 			} else {
 				// C. KARTU DINONAKTIFKAN
 				fmt.Printf("[RFID] Akses Ditolak: Kartu %s dinonaktifkan.\n", card.UID)
