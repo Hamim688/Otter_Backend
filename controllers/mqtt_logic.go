@@ -43,9 +43,8 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			return
 		}
 
-		// Konversi CahayaAtap (LDR) ke Persentase (0-100%)
-		// Asumsi ESP32 ADC Max = 4095. Semakin terang, nilai persentase semakin tinggi (mendekati 100%).
-		cahayaPercentage := 100 - int((float64(payload.CahayaAtap)/4095.0)*100)
+		// CahayaAtap (LDR) sudah dikonversi ke persentase (0-100%) di sisi ESP32
+		cahayaPercentage := payload.CahayaAtap
 		if cahayaPercentage < 0 {
 			cahayaPercentage = 0
 		} else if cahayaPercentage > 100 {
