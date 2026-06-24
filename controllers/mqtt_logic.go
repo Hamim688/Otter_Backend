@@ -270,6 +270,33 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					// Tembak perintah ke ESP32 buat bunyiin buzzer
 					perangkatJson, _ := json.Marshal(perangkat)
 					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+					
+					// [FITUR BARU] Kedip LED Merah Dapur (1-0-1-0) setiap 1 detik saat alarm aktif
+					go func() {
+						ledState := true
+						for {
+							// Cek apakah alarm masih aktif di database
+							var p models.Perangkat
+							if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
+								// Jika alarm dimatikan (Disarm), pastikan LED Merah mati lalu keluar dari loop
+								p.LedMerahDapur = false
+								config.DB.Save(&p)
+								pJson, _ := json.Marshal(p)
+								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+								break
+							}
+
+							// Toggle state LED
+							p.LedMerahDapur = ledState
+							config.DB.Save(&p)
+							
+							pJson, _ := json.Marshal(p)
+							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+
+							ledState = !ledState // balikkan status untuk iterasi berikutnya (kedip)
+							time.Sleep(1 * time.Second)
+						}
+					}()
 				}
 			}
 		}

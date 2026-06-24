@@ -3,6 +3,9 @@ package controllers
 import (
 	"Backend/config"
 	"Backend/models"
+	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -63,6 +66,39 @@ func ApproveRfidCard(c *fiber.Ctx) error {
 	card.NamaPemilik = body.NamaPemilik
 	card.Status = "aktif"
 	config.DB.Save(&card)
+
+	// Buka pintu!
+	var perangkat models.Perangkat
+	config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
+	perangkat.KunciPintuRfid = false // False = Pintu terbuka
+	config.DB.Save(&perangkat)
+
+	// Publish Perangkat ke MQTT
+	perangkatJson, _ := json.Marshal(perangkat)
+	config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+
+	// Publish response sukses ke ESP32
+	responsePayload := map[string]string{
+		"uid":          card.UID,
+		"status":       "aktif",
+		"nama_pemilik": card.NamaPemilik,
+	}
+	respJson, _ := json.Marshal(responsePayload)
+	config.MQTTClient.Publish("otter_smarthome/rfid/response", 0, false, respJson)
+
+	// Auto lock 5 detik
+	time.AfterFunc(5*time.Second, func() {
+		fmt.Println("[AUTO-LOCK API] 5 detik berlalu. Mengunci pintu kembali...")
+		var p models.Perangkat
+		if err := config.DB.First(&p, 1).Error; err == nil {
+			if !p.KunciPintuRfid {
+				p.KunciPintuRfid = true
+				config.DB.Save(&p)
+				pJson, _ := json.Marshal(p)
+				config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+			}
+		}
+	})
 
 	return c.JSON(fiber.Map{
 		"status":  "sukses",
