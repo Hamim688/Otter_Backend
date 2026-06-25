@@ -331,49 +331,49 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 					strings.Contains(titleLower, "kebakaran") || 
 					strings.Contains(titleLower, "flame")
 
-				if isFireAlert {
-					if !perangkat.LedMerahDapur {
-						perangkat.LedMerahDapur = true
-						perubahan = true
-
-						// Jalankan blinking goroutine khusus kebakaran
-						go func() {
-							ledState := true
-							for {
-								var p models.Perangkat
-								if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
-									p.LedMerahDapur = false
-									config.DB.Save(&p)
-									pJson, _ := json.Marshal(p)
-									config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-									break
-								}
-
-								var s models.SensorLog
-								if err := config.DB.Order("created_at desc").First(&s).Error; err != nil || s.DapurFlame == 0 {
-									p.LedMerahDapur = false
-									config.DB.Save(&p)
-									pJson, _ := json.Marshal(p)
-									config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-									break
-								}
-
-								p.LedMerahDapur = ledState
-								config.DB.Save(&p)
-								pJson, _ := json.Marshal(p)
-								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
-
-								ledState = !ledState
-								time.Sleep(1 * time.Second)
-							}
-						}()
-					}
-				}
-
+				// Lakukan SAVE dan PUBLISH terlebih dahulu agar Goroutine bisa membaca state terbaru dari Database!
 				if perubahan {
 					config.DB.Save(&perangkat)
 					perangkatJson, _ := json.Marshal(perangkat)
 					config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, perangkatJson)
+				}
+
+				// Jika ini peringatan kebakaran, jalankan Goroutine efek lampu berkedip
+				if isFireAlert {
+					// Jalankan blinking goroutine khusus kebakaran
+					go func() {
+						ledState := true
+						for {
+							var p models.Perangkat
+							// Cek apakah alarm sudah dimatikan (BuzzerAlrm == false)
+							if err := config.DB.First(&p, 1).Error; err != nil || !p.BuzzerAlrm {
+								p.LedMerahDapur = false
+								config.DB.Save(&p)
+								pJson, _ := json.Marshal(p)
+								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+								break
+							}
+
+							// Cek apakah api sudah padam (DapurFlame == 0)
+							var s models.SensorLog
+							if err := config.DB.Order("created_at desc").First(&s).Error; err != nil || s.DapurFlame == 0 {
+								p.LedMerahDapur = false
+								config.DB.Save(&p)
+								pJson, _ := json.Marshal(p)
+								config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+								break
+							}
+
+							// Toggle status kedip
+							p.LedMerahDapur = ledState
+							config.DB.Save(&p)
+							pJson, _ := json.Marshal(p)
+							config.MQTTClient.Publish("otter_smarthome/perangkat", 0, false, pJson)
+
+							ledState = !ledState
+							time.Sleep(1 * time.Second)
+						}
+					}()
 				}
 			}
 		}
