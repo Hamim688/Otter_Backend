@@ -9,6 +9,6 @@ type Otomatisasi struct {
 	AutoLampuDapur       bool    `gorm:"default:true" json:"auto_lampu_dapur"`
 	ModeAutoKipas        bool    `gorm:"default:true" json:"mode_auto_kipas"`
 	BatasGelapLampu      int     `gorm:"default:30" json:"batas_gelap_lampu"`
-	BatasPanasKamar      float64 `gorm:"default:29.0" json:"batas_panas_kamar"`
+	BatasPanasKamar      float64 `gorm:"default:27.0" json:"batas_panas_kamar"`
 	ModeKeamananAktif    bool    `gorm:"default:false" json:"mode_keamanan_aktif"`
 }

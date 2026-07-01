@@ -73,12 +73,34 @@ var MessagePubHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			config.DB.FirstOrCreate(&perangkat, models.Perangkat{ID: 1})
 
       // 1. Cek Kipas Auto
-      if aturan.ModeAutoKipas && payload.KamarSuhu > aturan.BatasPanasKamar {
-        if !perangkat.KipasKamar {
-          perangkat.KipasKamar = true
-          perangkat.KecepatanKipas = 255 // Kecepatan penuh saat auto nyala
-          perubahan = true
-          fmt.Println("[AUTO] Kamar Kepanasan! Kipas otomatis MENYALA.")
+      if aturan.ModeAutoKipas {
+        if payload.KamarSuhu >= aturan.BatasPanasKamar {
+          if !perangkat.KipasKamar {
+            perangkat.KipasKamar = true
+            perubahan = true
+          }
+          // Tentukan kecepatan kipas berdasarkan selisih suhu
+          diff := payload.KamarSuhu - aturan.BatasPanasKamar
+          var newSpeed int
+          if diff > 4.0 {
+            newSpeed = 255 // Level 3 (Full)
+          } else if diff > 2.0 {
+            newSpeed = 170 // Level 2 (Medium)
+          } else {
+            newSpeed = 85  // Level 1 (Slow)
+          }
+          if perangkat.KecepatanKipas != newSpeed {
+            perangkat.KecepatanKipas = newSpeed
+            perubahan = true
+            fmt.Printf("[AUTO] Suhu Kamar: %.1f°C. Kipas MENYALA dengan Kecepatan (PWM): %d\n", payload.KamarSuhu, newSpeed)
+          }
+        } else {
+          if perangkat.KipasKamar {
+            perangkat.KipasKamar = false
+            perangkat.KecepatanKipas = 0
+            perubahan = true
+            fmt.Println("[AUTO] Kamar sudah adem. Kipas otomatis MATI.")
+          }
         }
       }
 
